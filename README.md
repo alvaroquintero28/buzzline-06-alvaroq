@@ -73,12 +73,8 @@ This will take two more terminals:
 
 ### Producer (Terminal 3) 
 
-Start the producer to generate the messages. 
-The existing producer writes messages to a live data file in the data folder.
-If Zookeeper and Kafka services are running, it will try to write them to a Kafka topic as well.
-For configuration details, see the .env file. 
+This Python script functions as a Kafka producer, continuously fetching real-time sports odds data from The Odds API and publishing it to a Kafka topic.  It uses environment variables for secure configuration, incorporates robust error handling and logging for both API interactions and Kafka communication, and transforms the raw API data into structured JSON messages before sending them.  The script runs indefinitely, sending data at a user-specified interval, ensuring a continuous stream of sports odds information is made available for consumers.
 
-In VS Code, open a NEW terminal.
 Use the commands below to activate .venv, and start the producer. 
 
 Mac/Linux:
@@ -87,15 +83,11 @@ source .venv/bin/activate
 python3 -m producers.producer_alvaro
 ```
 
-The producer will still work if Kafka is not available.
 
 ### Consumer (Terminal 4) - 
 
-Start an associated consumer. This script acts as a continuous message consumer, reading JSON messages from a file, processing them, and storing them in a MongoDB database.  It periodically displays a summary table and creates a bar chart visualizing the distribution of message categories using Matplotlib, offering real-time monitoring and analysis of incoming data.  Error handling and logging are included for robustness.
+This Python script acts as a Kafka consumer, designed to receive messages from a specified Kafka topic and store them in a local SQLite database.  It begins by establishing a connection to the Kafka broker and the designated topic, using environment variables to configure the broker address and topic name.  Upon successful connection, it reads messages from the Kafka topic one by one.  If a database table named sports_odds does not already exist, it will create one to store the incoming messages. Each received message is then converted from JSON format and inserted into the sports_odds table within the SQLite database.  The script incorporates error handling to manage potential issues during database operations and Kafka consumption, and it ensures the Kafka consumer is closed gracefully using a finally block.  The main function serves as a simple entry point for the database operations, and you would remove this when integrating the consumer function into a larger application.
 
-1. Start the consumer that reads from the Kafka topic.
-
-In VS Code, open a NEW terminal in your root project folder. 
 Use the commands below to activate .venv, and start the consumer. 
 
 Mac/Linux:
