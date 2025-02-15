@@ -1,207 +1,105 @@
-"""
-producer_case.py
-
-Stream JSON data to a file and - if available - a Kafka topic.
-
-Example JSON message
-{
-    "message": "I just shared a meme! It was amazing.",
-    "author": "Charlie",
-    "timestamp": "2025-01-29 14:35:20",
-    "category": "humor",
-    "sentiment": 0.87,
-    "keyword_mentioned": "meme",
-    "message_length": 42
-}
-
-Environment variables are in utils/utils_config module. 
-"""
-
-#####################################
-# Import Modules
-#####################################
-
-# import from standard library
-import json
 import os
-import pathlib
-import random
-import sys
+import json
 import time
-from datetime import datetime
-
-# import external modules
+import logging
 from kafka import KafkaProducer
+import requests
+import pathlib
 
-# import from local modules
-import utils.utils_config as config
-from utils.utils_producer import verify_services, create_kafka_topic
-from utils.utils_logger import logger
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-#####################################
-# Stub Sentiment Analysis Function
-#####################################
-
-
-def assess_sentiment(text: str) -> float:
-    """
-    Stub for sentiment analysis.
-    Returns a random float between 0 and 1 for now.
-    """
-    return round(random.uniform(0, 1), 2)
+# --- Configuration (Consider using environment variables for security) ---
+KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "localhost:9092")  # Your Kafka broker address
+KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "sports_odds")  # Your Kafka topic name
+ODDS_API_KEY = os.environ.get("ODDS_API_KEY")  # Your Odds API key (KEEP SECURE!)
+MESSAGE_INTERVAL_SECONDS = int(os.environ.get("MESSAGE_INTERVAL_SECONDS", "5")) #Sets the interval in which the data is sent
+LIVE_DATA_PATH = pathlib.Path(os.environ.get("LIVE_DATA_PATH", "./data/live_data.json")) #Sets the path for the file
 
 
-#####################################
-# Define Message Generator
-#####################################
-
-
-def generate_messages():
-    """
-    Generate a stream of JSON messages.
-    """
-    ADJECTIVES = ["amazing", "funny", "boring", "exciting", "weird"]
-    ACTIONS = ["found", "saw", "tried", "shared", "loved"]
-    TOPICS = [
-        "a movie",
-        "a meme",
-        "an app",
-        "a trick",
-        "a story",
-        "Python",
-        "JavaScript",
-        "recipe",
-        "travel",
-        "game",
-    ]
-    AUTHORS = ["Alice", "Bob", "Charlie", "Eve"]
-    KEYWORD_CATEGORIES = {
-        "meme": "humor",
-        "Python": "tech",
-        "JavaScript": "tech",
-        "recipe": "food",
-        "travel": "travel",
-        "movie": "entertainment",
-        "game": "gaming",
-    }
-    while True:
-        adjective = random.choice(ADJECTIVES)
-        action = random.choice(ACTIONS)
-        topic = random.choice(TOPICS)
-        author = random.choice(AUTHORS)
-        message_text = f"I just {action} {topic}! It was {adjective}."
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Find category based on keywords
-        keyword_mentioned = next(
-            (word for word in KEYWORD_CATEGORIES if word in topic), "other"
-        )
-        category = KEYWORD_CATEGORIES.get(keyword_mentioned, "other")
-
-        # Assess sentiment
-        sentiment = assess_sentiment(message_text)
-
-        # Create JSON message
-        json_message = {
-            "message": message_text,
-            "author": author,
-            "timestamp": timestamp,
-            "category": category,
-            "sentiment": sentiment,
-            "keyword_mentioned": keyword_mentioned,
-            "message_length": len(message_text),
-        }
-
-        yield json_message
-
-
-#####################################
-# Define Main Function
-#####################################
-
-
-def main() -> None:
-
-    logger.info("Starting Producer to run continuously.")
-    logger.info("Things can fail or get interrupted, so use a try block.")
-    logger.info("Moved .env variables into a utils config module.")
-
-    logger.info("STEP 1. Read required environment variables.")
-
+# --- Helper Functions ---
+def create_kafka_producer():
+    """Creates and returns a Kafka producer. Handles exceptions gracefully."""
     try:
-        interval_secs: int = config.get_message_interval_seconds_as_int()
-        topic: str = config.get_kafka_topic()
-        kafka_server: str = config.get_kafka_broker_address()
-        live_data_path: pathlib.Path = config.get_live_data_path()
-    except Exception as e:
-        logger.error(f"ERROR: Failed to read environment variables: {e}")
-        sys.exit(1)
-
-    logger.info("STEP 2. Delete the live data file if exists to start fresh.")
-
-    try:
-        if live_data_path.exists():
-            live_data_path.unlink()
-            logger.info("Deleted existing live data file.")
-
-        logger.info("STEP 3. Build the path folders to the live data file if needed.")
-        os.makedirs(live_data_path.parent, exist_ok=True)
-    except Exception as e:
-        logger.error(f"ERROR: Failed to delete live data file: {e}")
-        sys.exit(2)
-
-    logger.info("STEP 4. Try to create a Kafka producer and topic.")
-    producer = None
-
-    try:
-        verify_services()
         producer = KafkaProducer(
-            bootstrap_servers=kafka_server,
-            value_serializer=lambda x: json.dumps(x).encode("utf-8"),
+            bootstrap_servers=[KAFKA_BROKER],
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            retries=3, # Retry up to 3 times on connection errors
+            retry_backoff_ms=1000 # Wait 1 second between retries
         )
-        logger.info(f"Kafka producer connected to {kafka_server}")
+        logger.info(f"Kafka producer connected to {KAFKA_BROKER}")
+        return producer
     except Exception as e:
-        logger.warning(f"WARNING: Kafka connection failed: {e}")
-        producer = None
+        logger.critical(f"CRITICAL: Failed to create Kafka producer: {e}. Exiting.")
+        exit(1)
 
-    if producer:
-        try:
-            create_kafka_topic(topic)
-            logger.info(f"Kafka topic '{topic}' is ready.")
-        except Exception as e:
-            logger.warning(f"WARNING: Failed to create or verify topic '{topic}': {e}")
-            producer = None
 
-    logger.info("STEP 5. Generate messages continuously.")
+def get_odds_data(sport, region):
+    """Fetches odds data from The Odds API. Includes detailed error handling."""
+    url = f"https://api.the-odds-api.com/v4/sports/{sport}/odds/?apiKey={ODDS_API_KEY}&regions={region}"
     try:
-        for message in generate_messages():
-            logger.info(message)
+        response = requests.get(url)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        data = response.json()
+        return data
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error fetching data from The Odds API: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON response from The Odds API: {e}")
+        return None
 
-            with live_data_path.open("a") as f:
-                f.write(json.dumps(message) + "\n")
-                logger.info(f"STEP 4a Wrote message to file: {message}")
 
-            # Send to Kafka if available
-            if producer:
-                producer.send(topic, value=message)
-                logger.info(f"STEP 4b Sent message to Kafka topic '{topic}': {message}")
-
-            time.sleep(interval_secs)
-
-    except KeyboardInterrupt:
-        logger.warning("WARNING: Producer interrupted by user.")
+def send_to_kafka(producer, message):
+    """Sends a message to Kafka with error handling."""
+    try:
+        producer.send(KAFKA_TOPIC, value=message)
+        logger.info(f"Sent message to Kafka: {message}")
     except Exception as e:
-        logger.error(f"ERROR: Unexpected error: {e}")
-    finally:
-        if producer:
-            producer.close()
-            logger.info("Kafka producer closed.")
-        logger.info("TRY/FINALLY: Producer shutting down.")
+        logger.error(f"Error sending message to Kafka: {e}")
 
 
-#####################################
-# Conditional Execution
-#####################################
+def main():
+    """Main function to orchestrate data fetching and Kafka sending."""
+
+    # Create a Kafka Producer
+    producer = create_kafka_producer()
+    if not producer:
+        return  # Exit if producer creation failed
+
+    #Ensure file is deleted before starting the script.
+    if LIVE_DATA_PATH.exists():
+        LIVE_DATA_PATH.unlink()
+        logger.info("Deleted existing live data file.")
+
+    os.makedirs(LIVE_DATA_PATH.parent, exist_ok=True)
+
+
+    sport = "basketball_nba"  # Example; change to your desired sport
+    region = "us"  # Example; change to your desired region
+
+    while True:
+        odds_data = get_odds_data(sport, region)
+        if odds_data:
+            for game in odds_data:
+                #Prepare the message to be sent to Kafka.  Adapt to your needs.
+                message = {
+                    "sport": sport,
+                    "region": region,
+                    "game_id": game.get("id", "N/A"), # Use .get() to handle missing keys safely
+                    "teams": game.get("teams", []), # Use .get() to handle missing keys safely
+                    "sites": game.get("sites", []),  # Use .get() to handle missing keys safely
+                  #Add other relevant fields here
+                }
+                send_to_kafka(producer, message)
+
+                with LIVE_DATA_PATH.open("a") as f:
+                    f.write(json.dumps(message) + "\n")
+                    logger.info(f"Wrote message to file: {message}")
+
+        time.sleep(MESSAGE_INTERVAL_SECONDS)
 
 if __name__ == "__main__":
     main()
+
