@@ -73,20 +73,22 @@ This will take two more terminals:
 
 ### Producer (Terminal 3) 
 
-This Python script functions as a Kafka producer, continuously fetching real-time sports odds data from The Odds API and publishing it to a Kafka topic.  It uses environment variables for secure configuration, incorporates robust error handling and logging for both API interactions and Kafka communication, and transforms the raw API data into structured JSON messages before sending them.  The script runs indefinitely, sending data at a user-specified interval, ensuring a continuous stream of sports odds information is made available for consumers.
+This script acts as a Kafka producer, fetching sports betting odds data from the Odds API and publishing it to a Kafka topic. It establishes a connection to a Kafka broker, retrieves NBA game data from the Odds API at a user-specified interval, and for each game, constructs a JSON message containing the sport, region, game ID, and betting sites. These messages are then sent to the designated Kafka topic and also written to a local JSON file for logging purposes. Robust error handling is implemented to manage potential issues during API requests and Kafka publishing. The script runs indefinitely, continuously fetching and publishing new data.
 
 Use the commands below to activate .venv, and start the producer. 
+
 
 Mac/Linux:
 ```zsh
 source .venv/bin/activate
+export ODDS_API_KEY="161f62644c47daaafe456111480c83c8" 
 python3 -m producers.producer_alvaro
 ```
 
 
 ### Consumer (Terminal 4) - 
 
-This Python script acts as a Kafka consumer, designed to receive messages from a specified Kafka topic and store them in a local SQLite database.  It begins by establishing a connection to the Kafka broker and the designated topic, using environment variables to configure the broker address and topic name.  Upon successful connection, it reads messages from the Kafka topic one by one.  If a database table named sports_odds does not already exist, it will create one to store the incoming messages. Each received message is then converted from JSON format and inserted into the sports_odds table within the SQLite database.  The script incorporates error handling to manage potential issues during database operations and Kafka consumption, and it ensures the Kafka consumer is closed gracefully using a finally block.  The main function serves as a simple entry point for the database operations, and you would remove this when integrating the consumer function into a larger application.
+This script functions as a real-time data processing and visualization pipeline, consuming messages from a Kafka topic ("sports_odds"), extracting game IDs, and updating a count for each ID. It concurrently stores these messages in an SQLite database and dynamically updates two Matplotlib charts—a bar chart and a pie chart—to visually represent the game ID counts. Error handling ensures robustness, and the interactive plotting feature provides a live, continuously updated display of the incoming data. The script relies on environment variables for configuration and gracefully handles cases where data is missing or incomplete.
 
 Use the commands below to activate .venv, and start the consumer. 
 
@@ -96,49 +98,6 @@ source .venv/bin/activate
 python3 -m consumers.db_sqlite_alvaro
 ```
 
----
-
-## Review the Project Code
-
-Review the requirements.txt file. 
-
-Review the .env file with the environment variables.
-
-Review the .gitignore file.
-
-Review the code for the producer and the two consumers.
-
-Compare the consumer that reads from a live data file and the consumer that reads from a Kafka topic.
-
-What files are in the utils folder? 
-
-What files are in the producers folder?
-
-What files are in the consumers folder?
-
----
-
-## Explorations
-
-- Did you run the kafka consumer or the live file consumer? Why?
-- Can you use the examples to add a database to your own streaming applications? 
-- What parts are most interesting to you?
-- What parts are most challenging? 
-
----
-
-## Later Work Sessions
-When resuming work on this project:
-1. Open the folder in VS Code. 
-2. Open a terminal and start the Zookeeper service. If Windows, remember to start wsl. 
-3. Open a terminal and start the Kafka service. If Windows, remember to start wsl. 
-4. Open a terminal to start the producer. Remember to activate your local project virtual environment (.env).
-5. Open a terminal to start the consumer. Remember to activate your local project virtual environment (.env).
-
-## Save Space
-To save disk space, you can delete the .venv folder when not actively working on this project.
-You can always recreate it, activate it, and reinstall the necessary packages later. 
-Managing Python virtual environments is a valuable skill. 
 
 ## License
 This project is licensed under the MIT License as an example project. 
