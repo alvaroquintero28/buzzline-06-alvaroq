@@ -123,7 +123,7 @@ PyQt6; sys_platform != "win32"
 # ======================================================
 
 # Apache Kafka Python client (six was removed so add it separately)
-kafka-python
+kafka-python>=2.0.0
 six
 
 # Alternative: pin the older version.
