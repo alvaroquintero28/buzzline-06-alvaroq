@@ -19,22 +19,40 @@ KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "localhost:9092")
 KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "sports_odds")
 
 # Data structures
-game_counts = defaultdict(int) # Count games instead of teams
+game_counts = defaultdict(int)
 
 # Live visuals
 plt.ion()
-fig, ax = plt.subplots()
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
 
 
 def update_chart():
-    ax.clear()
+    ax1.clear()
+    ax2.clear()
+
     labels = list(game_counts.keys())
     counts = list(game_counts.values())
-    ax.bar(labels, counts, color="green")
-    ax.set_xlabel("Game ID")  # Updated x-axis label
-    ax.set_ylabel("Count")
-    ax.set_title("Real-Time Sports Game Counts")  # Updated title
-    ax.set_xticklabels(labels, rotation=45, ha="right")
+
+    if not labels or not counts:  # Handle empty data gracefully
+        ax1.text(0.5, 0.5, "No data yet!", ha="center", va="center")
+        ax2.text(0.5, 0.5, "No data yet!", ha="center", va="center")
+        plt.tight_layout()
+        plt.draw()
+        plt.pause(0.01)
+        return
+
+    # Bar chart
+    ax1.bar(labels, counts, color="green")
+    ax1.set_xlabel("Game ID")
+    ax1.set_ylabel("Count")
+    ax1.set_title("Real-Time Sports Game Counts (Bar Chart)")
+    ax1.set_xticklabels(labels, rotation=45, ha="right")
+
+    # Pie chart
+    ax2.pie(counts, labels=labels, autopct='%1.1f%%', startangle=140)
+    ax2.axis('equal')
+    ax2.set_title("Real-Time Sports Game Counts (Pie Chart)")
+
     plt.tight_layout()
     plt.draw()
     plt.pause(0.01)
@@ -78,7 +96,7 @@ def consume_and_store():
             bootstrap_servers=[KAFKA_BROKER],
             value_deserializer=lambda v: json.loads(v.decode('utf-8')),
             auto_offset_reset='latest',
-            consumer_timeout_ms=30000  #Increased timeout
+            consumer_timeout_ms=60000
         )
         logger.info(f"Kafka consumer connected to {KAFKA_BROKER}, consuming from {KAFKA_TOPIC}")
 
@@ -102,4 +120,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
