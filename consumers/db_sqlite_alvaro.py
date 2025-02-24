@@ -8,6 +8,7 @@ import pathlib
 import time
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
+import matplotlib.dates as mdates
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -20,22 +21,26 @@ KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "sports_odds")
 
 # Data structures
 game_counts = defaultdict(int)
+game_counts_over_time = []
+game_scores = []
 
 # Live visuals
 plt.ion()
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
-
+fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 12))
+ax4.axis('off') #remove redundant plot
 
 def update_chart():
     ax1.clear()
     ax2.clear()
+    ax3.clear()
 
     labels = list(game_counts.keys())
     counts = list(game_counts.values())
 
-    if not labels or not counts:  # Handle empty data gracefully
+    if not labels or not counts:
         ax1.text(0.5, 0.5, "No data yet!", ha="center", va="center")
         ax2.text(0.5, 0.5, "No data yet!", ha="center", va="center")
+        ax3.text(0.5, 0.5, "No data yet!", ha="center", va="center")
         plt.tight_layout()
         plt.draw()
         plt.pause(0.01)
@@ -52,6 +57,21 @@ def update_chart():
     ax2.pie(counts, labels=labels, autopct='%1.1f%%', startangle=140)
     ax2.axis('equal')
     ax2.set_title("Real-Time Sports Game Counts (Pie Chart)")
+
+    # Line Chart
+    timestamps, counts_time = zip(*[(time.strftime('%H:%M:%S',time.localtime(timestamp)), count) for timestamp, game_id, count in game_counts_over_time])
+    ax3.plot(timestamps, counts_time, marker='o', linestyle='-')
+    ax3.set_xlabel("Time")
+    ax3.set_ylabel("Game Count")
+    ax3.set_title("Game Counts Over Time")
+    plt.setp(ax3.get_xticklabels(), rotation=45, ha="right")
+
+    # Histogram
+    if game_scores:
+        ax4.hist(game_scores, bins=10, color='skyblue', edgecolor='black')
+        ax4.set_xlabel("Score")
+        ax4.set_ylabel("Frequency")
+        ax4.set_title("Distribution of Game Scores")
 
     plt.tight_layout()
     plt.draw()
@@ -103,6 +123,10 @@ def consume_and_store():
         for message in consumer:
             game_id = message.value.get("game_id", "Unknown")
             game_counts[game_id] += 1
+            timestamp = time.time()
+            game_counts_over_time.append((timestamp, game_id, game_counts[game_id]))
+            score = message.value.get("score", 0)  # Assumes 'score' key exists in JSON
+            game_scores.append(score)
             insert_message(DATABASE_PATH, message.value)
             update_chart()
 
@@ -120,3 +144,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
