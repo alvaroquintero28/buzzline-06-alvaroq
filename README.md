@@ -88,7 +88,7 @@ python3 -m producers.producer_alvaro
 
 ### Consumer (Terminal 4) - 
 
-This script functions as a real-time data processing and visualization pipeline, consuming messages from a Kafka topic ("sports_odds"), extracting game IDs, and updating a count for each ID. It concurrently stores these messages in an SQLite database and dynamically updates two Matplotlib charts—a bar chart and a pie chart—to visually represent the game ID counts. Error handling ensures robustness, and the interactive plotting feature provides a live, continuously updated display of the incoming data. The script relies on environment variables for configuration and gracefully handles cases where data is missing or incomplete.
+The Kafka consumer implementation reads messages from a specified topic, extracts game IDs and scores, and updates both a database and real-time charts.  It uses a defaultdict to count game occurrences, a list to track game counts over time, and another list to store game scores.  These data structures feed into four matplotlib charts:  a bar chart and a pie chart showing game counts; a line chart displaying the cumulative game count over time; and a histogram showing the distribution of game scores. Data is persistently stored in an SQLite database.  The application gracefully handles empty datasets and incorporates error handling within the update_chart() function. The consumer connects to the Kafka broker, continuously processes messages, updates the charts, and the database atomically.  The matplotlib.pyplot.show(block=True) ensures the plotting remains active until the application is explicitly closed.
 
 Use the commands below to activate .venv, and start the consumer. 
 
